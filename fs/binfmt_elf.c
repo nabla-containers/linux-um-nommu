@@ -65,6 +65,9 @@ static int load_elf_library(struct file *);
 #define load_elf_library NULL
 #endif
 
+// rkj: can't find a way to use kconfig to have this OFF
+#undef CONFIG_ELF_CORE
+
 /*
  * If we don't support core dumping, then supply a NULL so we
  * don't even try.
@@ -104,6 +107,7 @@ static int set_brk(unsigned long start, unsigned long end, int prot)
 	start = ELF_PAGEALIGN(start);
 	end = ELF_PAGEALIGN(end);
 	if (end > start) {
+#ifdef CONFIG_MMU
 		/*
 		 * Map the last of the bss segment.
 		 * If the header is requesting these pages to be
@@ -113,6 +117,15 @@ static int set_brk(unsigned long start, unsigned long end, int prot)
 				prot & PROT_EXEC ? VM_EXEC : 0);
 		if (error)
 			return error;
+#else
+		//unsigned long maddr = vm_mmap(NULL, start, end - start,
+		//	PROT_READ | PROT_WRITE | PROT_EXEC,
+		//	MAP_PRIVATE | MAP_EXECUTABLE, 0);
+		//printk(KERN_DEBUG "vm_brk ret=%lx start=%lx\n",
+		//		maddr, start);
+		//if (maddr != start)
+		//	return -ENOMEM;
+#endif
 	}
 	current->mm->start_brk = current->mm->brk = end;
 	return 0;
@@ -138,6 +151,9 @@ static int padzero(unsigned long elf_bss)
 
 /* Let's use some macros to make this stack manipulation a little clearer */
 #ifdef CONFIG_STACK_GROWSUP
+#ifndef CONFIG_MMU
+#error "rkj: Should not be here (XXX remove me)"
+#endif
 #define STACK_ADD(sp, items) ((elf_addr_t __user *)(sp) + (items))
 #define STACK_ROUND(sp, items) \
 	((15 + (unsigned long) ((sp) + (items))) &~ 15UL)
@@ -160,6 +176,12 @@ static int padzero(unsigned long elf_bss)
 #define ELF_BASE_PLATFORM NULL
 #endif
 
+//#include <asm/syscall.h>
+typedef asmlinkage long (*sys_call_ptr_t)(const struct pt_regs *);
+
+//extern char vdso_start[], vdso_end[];
+extern void __kernel_vsyscall(void);
+
 static int
 create_elf_tables(struct linux_binprm *bprm, struct elfhdr *exec,
 		unsigned long load_addr, unsigned long interp_load_addr)
@@ -180,6 +202,7 @@ create_elf_tables(struct linux_binprm *bprm, struct elfhdr *exec,
 	const struct cred *cred = current_cred();
 	struct vm_area_struct *vma;
 
+#ifdef CONFIG_MMU
 	/*
 	 * In some cases (e.g. Hyper-Threading), we want to avoid L1
 	 * evictions by the processes running on the same package. One
@@ -187,6 +210,18 @@ create_elf_tables(struct linux_binprm *bprm, struct elfhdr *exec,
 	 */
 
 	p = arch_align_stack(p);
+#else
+	p = current->mm->start_stack;
+	p = arch_align_stack(p);
+
+	/* stack the program arguments and environment */
+	if (transfer_args_to_stack(bprm, &p) < 0)
+		return -EFAULT;
+	current->mm->arg_start = p;
+
+	/* not really needed now as we are using the kernel stack (for users) */
+	p &= ~0xf;
+#endif
 
 	/*
 	 * If this architecture has a platform capability string, copy it
@@ -199,6 +234,7 @@ create_elf_tables(struct linux_binprm *bprm, struct elfhdr *exec,
 		size_t len = strlen(k_platform) + 1;
 
 		u_platform = (elf_addr_t __user *)STACK_ALLOC(p, len);
+
 		if (__copy_to_user(u_platform, k_platform, len))
 			return -EFAULT;
 	}
@@ -212,6 +248,7 @@ create_elf_tables(struct linux_binprm *bprm, struct elfhdr *exec,
 		size_t len = strlen(k_base_platform) + 1;
 
 		u_base_platform = (elf_addr_t __user *)STACK_ALLOC(p, len);
+
 		if (__copy_to_user(u_base_platform, k_base_platform, len))
 			return -EFAULT;
 	}
@@ -222,10 +259,12 @@ create_elf_tables(struct linux_binprm *bprm, struct elfhdr *exec,
 	get_random_bytes(k_rand_bytes, sizeof(k_rand_bytes));
 	u_rand_bytes = (elf_addr_t __user *)
 		       STACK_ALLOC(p, sizeof(k_rand_bytes));
+
 	if (__copy_to_user(u_rand_bytes, k_rand_bytes, sizeof(k_rand_bytes)))
 		return -EFAULT;
-
+	
 	/* Create the ELF interpreter info */
+	// rkj: what is this address coming from saved_auxv
 	elf_info = (elf_addr_t *)current->mm->saved_auxv;
 	/* update AT_VECTOR_SIZE_BASE if the number of NEW_AUX_ENT() changes */
 #define NEW_AUX_ENT(id, val) \
@@ -234,6 +273,7 @@ create_elf_tables(struct linux_binprm *bprm, struct elfhdr *exec,
 		elf_info[ei_index++] = val; \
 	} while (0)
 
+
 #ifdef ARCH_DLINFO
 	/* 
 	 * ARCH_DLINFO must come first so PPC can do its special alignment of
@@ -241,7 +281,11 @@ create_elf_tables(struct linux_binprm *bprm, struct elfhdr *exec,
 	 * update AT_VECTOR_SIZE_ARCH if the number of NEW_AUX_ENT() in
 	 * ARCH_DLINFO changes
 	 */
+#ifdef CONFIG_MMU // rkj: XXX add a config_vdso
+	// there is no need for a vdso if we are using vsyscall anyway
 	ARCH_DLINFO;
+#endif
+	NEW_AUX_ENT(AT_SYSINFO, __kernel_vsyscall);
 #endif
 	NEW_AUX_ENT(AT_HWCAP, ELF_HWCAP);
 	NEW_AUX_ENT(AT_PAGESZ, ELF_EXEC_PAGESIZE);
@@ -261,6 +305,9 @@ create_elf_tables(struct linux_binprm *bprm, struct elfhdr *exec,
 #ifdef ELF_HWCAP2
 	NEW_AUX_ENT(AT_HWCAP2, ELF_HWCAP2);
 #endif
+	// rkj: this was missing, how come. It's missing in elf pdic as well
+	// check if it's needed
+	bprm->exec += load_addr;
 	NEW_AUX_ENT(AT_EXECFN, bprm->exec);
 	if (k_platform) {
 		NEW_AUX_ENT(AT_PLATFORM,
@@ -294,14 +341,16 @@ create_elf_tables(struct linux_binprm *bprm, struct elfhdr *exec,
 	sp = (elf_addr_t __user *)bprm->p;
 #endif
 
-
 	/*
 	 * Grow the stack manually; some architectures have a limit on how
 	 * far ahead a user-space access may be in order to grow the stack.
 	 */
+#ifdef CONFIG_MMU
+	// rkj
 	vma = find_extend_vma(current->mm, bprm->p);
 	if (!vma)
 		return -EFAULT;
+#endif
 
 	/* Now, let's put argc (and argv, envp if appropriate) on the stack */
 	if (__put_user(argc, sp++))
@@ -309,6 +358,8 @@ create_elf_tables(struct linux_binprm *bprm, struct elfhdr *exec,
 
 	/* Populate list of argv pointers back to argv strings. */
 	p = current->mm->arg_end = current->mm->arg_start;
+
+
 	while (argc-- > 0) {
 		size_t len;
 		if (__put_user((elf_addr_t)p, sp++))
@@ -337,6 +388,7 @@ create_elf_tables(struct linux_binprm *bprm, struct elfhdr *exec,
 		return -EFAULT;
 	current->mm->env_end = p;
 
+	// rkj: this is not being passed
 	/* Put the elf_info on the stack in the right place.  */
 	if (copy_to_user(sp, elf_info, ei_index * sizeof(elf_addr_t)))
 		return -EFAULT;
@@ -351,7 +403,13 @@ static unsigned long elf_map(struct file *filep, unsigned long addr,
 {
 	unsigned long map_addr;
 	unsigned long size = eppnt->p_filesz + ELF_PAGEOFFSET(eppnt->p_vaddr);
-	unsigned long off = eppnt->p_offset - ELF_PAGEOFFSET(eppnt->p_vaddr);
+	unsigned long off;
+
+	if (eppnt->p_offset < ELF_PAGEOFFSET(eppnt->p_vaddr)) 
+		off = eppnt->p_offset;
+	else
+		off = eppnt->p_offset - ELF_PAGEOFFSET(eppnt->p_vaddr);
+
 	addr = ELF_PAGESTART(addr);
 	size = ELF_PAGEALIGN(size);
 
@@ -373,8 +431,9 @@ static unsigned long elf_map(struct file *filep, unsigned long addr,
 		map_addr = vm_mmap(filep, addr, total_size, prot, type, off);
 		if (!BAD_ADDR(map_addr))
 			vm_munmap(map_addr+size, total_size-size);
-	} else
+	} else {
 		map_addr = vm_mmap(filep, addr, size, prot, type, off);
+	}
 
 	if ((type & MAP_FIXED_NOREPLACE) &&
 	    PTR_ERR((void *)map_addr) == -EEXIST)
@@ -566,12 +625,34 @@ static unsigned long load_elf_interp(struct elfhdr *interp_elf_ex,
 	if (!interpreter->f_op->mmap)
 		goto out;
 
+#ifdef CONFIG_MMU
 	total_size = total_mapping_size(interp_elf_phdata,
 					interp_elf_ex->e_phnum);
 	if (!total_size) {
 		error = -EINVAL;
 		goto out;
 	}
+#else
+	unsigned long base = ULONG_MAX, top = 0, maddr = 0, mflags;
+
+	for(i = 0, eppnt = interp_elf_phdata;
+	    i < interp_elf_ex->e_phnum; i++, eppnt++) {
+		if (eppnt->p_type != PT_LOAD)
+			continue;
+
+		if (base > eppnt->p_vaddr)
+			base = eppnt->p_vaddr;
+		if (top < eppnt->p_vaddr + eppnt->p_memsz)
+			top = eppnt->p_vaddr + eppnt->p_memsz;
+	}
+
+	mflags = MAP_PRIVATE | MAP_EXECUTABLE;
+	maddr = vm_mmap(NULL, 0, top - base,
+			PROT_READ | PROT_WRITE | PROT_EXEC, mflags, 0);
+	if (IS_ERR_VALUE(maddr))
+		return (int) maddr;
+	total_size = top - base;
+#endif // CONFIG_MMU
 
 	eppnt = interp_elf_phdata;
 	for (i = 0; i < interp_elf_ex->e_phnum; i++, eppnt++) {
@@ -587,8 +668,16 @@ static unsigned long load_elf_interp(struct elfhdr *interp_elf_ex,
 			else if (no_base && interp_elf_ex->e_type == ET_DYN)
 				load_addr = -vaddr;
 
+#ifdef CONFIG_MMU
 			map_addr = elf_map(interpreter, load_addr + vaddr,
 					eppnt, elf_prot, elf_type, total_size);
+#else
+			map_addr = maddr + (vaddr - base);
+			int ret = read_code(interpreter, map_addr,
+				eppnt->p_offset, eppnt->p_filesz);
+			if (ret < 0)
+				map_addr = TASK_SIZE; // error
+#endif
 			total_size = 0;
 			if (!*interp_map_addr)
 				*interp_map_addr = map_addr;
@@ -654,10 +743,21 @@ static unsigned long load_elf_interp(struct elfhdr *interp_elf_ex,
 	last_bss = ELF_PAGEALIGN(last_bss);
 	/* Finally, if there is still more bss to allocate, do it. */
 	if (last_bss > elf_bss) {
+#ifdef CONFIG_MMU
 		error = vm_brk_flags(elf_bss, last_bss - elf_bss,
 				bss_prot & PROT_EXEC ? VM_EXEC : 0);
 		if (error)
 			goto out;
+#else
+		//unsigned long maddr = vm_mmap(NULL, elf_bss,
+		//	last_bss - elf_bss,
+		//	PROT_READ | PROT_WRITE | PROT_EXEC,
+		//	MAP_PRIVATE | MAP_EXECUTABLE, 0);
+		//printk(KERN_DEBUG "vm_brk ret=%lx start=%lx\n",
+		//		maddr, elf_bss);
+		//if (maddr != elf_bss)
+		//	goto out;
+#endif
 	}
 
 	error = load_addr;
@@ -689,6 +789,9 @@ static unsigned long randomize_stack_top(unsigned long stack_top)
 	return PAGE_ALIGN(stack_top) - random_variable;
 #endif
 }
+
+extern void os_timer_disable(void);
+extern int set_signals(int enable);
 
 static int load_elf_binary(struct linux_binprm *bprm)
 {
@@ -726,7 +829,8 @@ static int load_elf_binary(struct linux_binprm *bprm)
 	if (memcmp(loc->elf_ex.e_ident, ELFMAG, SELFMAG) != 0)
 		goto out;
 
-	if (loc->elf_ex.e_type != ET_EXEC && loc->elf_ex.e_type != ET_DYN)
+	//if (loc->elf_ex.e_type != ET_EXEC && loc->elf_ex.e_type != ET_DYN)
+	if (loc->elf_ex.e_type != ET_DYN)
 		goto out;
 	if (!elf_check_arch(&loc->elf_ex))
 		goto out;
@@ -770,20 +874,24 @@ static int load_elf_binary(struct linux_binprm *bprm)
 		}
 		/* make sure path is NULL terminated */
 		retval = -ENOEXEC;
-		if (elf_interpreter[elf_ppnt->p_filesz - 1] != '\0')
+		if (elf_interpreter[elf_ppnt->p_filesz - 1] != '\0') {
 			goto out_free_interp;
+		}
 
 		interpreter = open_exec(elf_interpreter);
 		kfree(elf_interpreter);
 		retval = PTR_ERR(interpreter);
-		if (IS_ERR(interpreter))
+		if (IS_ERR(interpreter)) {
 			goto out_free_ph;
+		}
 
 		/*
 		 * If the binary is not readable then enforce mm->dumpable = 0
 		 * regardless of the interpreter's permissions.
 		 */
+#ifdef CONFIG_MMU
 		would_dump(bprm, interpreter);
+#endif
 
 		/* Get the exec headers */
 		pos = 0;
@@ -880,12 +988,19 @@ out_free_interp:
 	setup_new_exec(bprm);
 	install_exec_creds(bprm);
 
+#ifdef CONFIG_MMU
 	/* Do this so that we can load the interpreter, if need be.  We will
 	   change some of these later */
+	/*
+	 * Setup_arg_pages is not implemented in NOMMU. It sets
+	 * things like mm->args_start. We do that by hand before
+	 * setting the argv array.
+	 */
 	retval = setup_arg_pages(bprm, randomize_stack_top(STACK_TOP),
 				 executable_stack);
 	if (retval < 0)
 		goto out_free_dentry;
+#endif
 	
 	elf_bss = 0;
 	elf_brk = 0;
@@ -894,6 +1009,32 @@ out_free_interp:
 	end_code = 0;
 	start_data = 0;
 	end_data = 0;
+
+#ifndef CONFIG_MMU
+	unsigned long base = ULONG_MAX, top = 0, maddr = 0, mflags;
+
+	for(i = 0, elf_ppnt = elf_phdata;
+	    i < loc->elf_ex.e_phnum; i++, elf_ppnt++) {
+		if (elf_ppnt->p_type != PT_LOAD)
+			continue;
+
+		if (base > elf_ppnt->p_vaddr)
+			base = elf_ppnt->p_vaddr;
+		if (top < elf_ppnt->p_vaddr + elf_ppnt->p_memsz)
+			top = elf_ppnt->p_vaddr + elf_ppnt->p_memsz;
+	}
+
+	//unsigned long total_size = total_mapping_size(elf_phdata,
+	//			loc->elf_ex.e_phnum);
+
+	/* allocate one big anon block for everything */
+	mflags = MAP_PRIVATE | MAP_EXECUTABLE | MAP_ANONYMOUS | MAP_UNINITIALIZED;
+	maddr = vm_mmap(NULL, 0, top - base,
+			PROT_READ | PROT_WRITE | PROT_EXEC, mflags, 0);
+	if (IS_ERR_VALUE(maddr))
+		return (int) maddr;
+
+#endif
 
 	/* Now we do a little grungy work by mmapping the ELF image into
 	   the correct location in memory. */
@@ -1007,8 +1148,17 @@ out_free_interp:
 			}
 		}
 
+#ifdef CONFIG_MMU
 		error = elf_map(bprm->file, load_bias + vaddr, elf_ppnt,
 				elf_prot, elf_flags, total_size);
+#else
+		unsigned long addr = maddr + (vaddr - base);
+		int ret = read_code(bprm->file, addr, elf_ppnt->p_offset,
+				       elf_ppnt->p_filesz);
+		if (ret < 0)
+			addr = TASK_SIZE; // error
+		error = addr;
+#endif
 		if (BAD_ADDR(error)) {
 			retval = IS_ERR((void *)error) ?
 				PTR_ERR((void*)error) : -EINVAL;
@@ -1117,16 +1267,45 @@ out_free_interp:
 
 	set_binfmt(&elf_format);
 
+#ifdef CONFIG_MMU
 #ifdef ARCH_HAS_SETUP_ADDITIONAL_PAGES
+	// rkj: sets the vdso page
 	retval = arch_setup_additional_pages(bprm, !!interpreter);
 	if (retval < 0)
 		goto out;
 #endif /* ARCH_HAS_SETUP_ADDITIONAL_PAGES */
+#endif
+
+#ifndef CONFIG_MMU
+	// arbitrary number copied from fs/binfmt_elf_fdpic.c
+	// rkj: this is where the user stack is allocated
+	unsigned long stack_size = 131072UL;
+
+	// rkj: dangerous PROT_EXEC on stack
+	// do what fs/binfmt_elf_fdpic.c does
+	unsigned long stack_prot;
+	stack_prot = PROT_READ | PROT_WRITE | PROT_EXEC;
+	current->mm->start_brk = vm_mmap(NULL, 0, stack_size, stack_prot,
+					 MAP_PRIVATE | MAP_ANONYMOUS |
+					 MAP_UNINITIALIZED | MAP_GROWSDOWN,
+					 0);
+
+	if (IS_ERR_VALUE(current->mm->start_brk)) {
+		retval = current->mm->start_brk;
+		current->mm->start_brk = 0;
+		goto out;
+	}
+
+	current->mm->brk = current->mm->start_brk;
+	current->mm->context.end_brk = current->mm->start_brk;
+	current->mm->start_stack = current->mm->start_brk + stack_size;
+#endif /* CONFIG_MMU */
 
 	retval = create_elf_tables(bprm, &loc->elf_ex,
 			  load_addr, interp_load_addr);
-	if (retval < 0)
+	if (retval < 0) {
 		goto out;
+	}
 	current->mm->end_code = end_code;
 	current->mm->start_code = start_code;
 	current->mm->start_data = start_data;
@@ -1176,9 +1355,20 @@ out_free_interp:
 	ELF_PLAT_INIT(regs, reloc_func_desc);
 #endif
 
+	/* perform the relocatoins */
+
+#ifdef CONFIG_MMU
+	// rkj: XXX: did the same in fork.c
 	finalize_exec(bprm);
+#endif
 	start_thread(regs, elf_entry, bprm->p);
 	retval = 0;
+
+ 	// rkj: what do we do about this?
+ 	// if enabled, there is crash
+ 	//local_irq_disable();
+	//os_timer_disable();
+	//set_signals(0);
 out:
 	kfree(loc);
 out_ret:

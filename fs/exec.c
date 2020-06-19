@@ -366,6 +366,7 @@ static int bprm_mm_init(struct linux_binprm *bprm)
 	if (!mm)
 		goto err;
 
+
 	/* Save current stack limit for all calculations made during exec. */
 	task_lock(current->group_leader);
 	bprm->rlim_stack = current->signal->rlim[RLIMIT_STACK];
@@ -820,8 +821,10 @@ int transfer_args_to_stack(struct linux_binprm *bprm,
 		unsigned int offset = index == stop ? bprm->p & ~PAGE_MASK : 0;
 		char *src = kmap(bprm->page[index]) + offset;
 		sp -= PAGE_SIZE - offset;
-		if (copy_to_user((void *) sp, src, PAGE_SIZE - offset) != 0)
+		if (copy_to_user((void *) sp, src, PAGE_SIZE - offset) != 0) {
+			printk(KERN_DEBUG "%s:%d copy_to_user failed\n", __FUNCTION__, __LINE__);
 			ret = -EFAULT;
+		}
 		kunmap(bprm->page[index]);
 		if (ret)
 			goto out;
@@ -1709,6 +1712,7 @@ static int exec_binprm(struct linux_binprm *bprm)
 	return ret;
 }
 
+
 /*
  * sys_execve() executes a new program.
  */
@@ -1795,6 +1799,12 @@ static int __do_execve_file(int fd, struct filename *filename,
 	if (retval)
 		goto out_unmark;
 
+
+#ifndef CONFIG_MMU
+	// otherwise we get a bunch of fatal_signal_pending == true
+        //clear_tsk_thread_flag(current, TIF_SIGPENDING);
+#endif
+
 	retval = prepare_arg_pages(bprm, argv, envp);
 	if (retval < 0)
 		goto out;
@@ -1819,8 +1829,9 @@ static int __do_execve_file(int fd, struct filename *filename,
 	would_dump(bprm, bprm->file);
 
 	retval = exec_binprm(bprm);
-	if (retval < 0)
+	if (retval < 0) {
 		goto out;
+	}
 
 	/* execve succeeded */
 	current->fs->in_exec = 0;
@@ -1836,7 +1847,6 @@ static int __do_execve_file(int fd, struct filename *filename,
 	if (displaced)
 		put_files_struct(displaced);
 	return retval;
-
 out:
 	if (bprm->mm) {
 		acct_arg_size(bprm, 0);

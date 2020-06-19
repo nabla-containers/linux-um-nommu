@@ -73,35 +73,62 @@ raw_copy_to_user(void __user *to, const void *from, unsigned long n)
 #define KERNEL_DS	MAKE_MM_SEG(~0UL)
 #endif
 
-#ifndef USER_DS
-#define USER_DS		MAKE_MM_SEG(TASK_SIZE - 1)
-#endif
+#ifdef CONFIG_MMU
 
-#ifndef get_fs
-#define get_fs()	(current_thread_info()->addr_limit)
+	#ifndef USER_DS
+	#define USER_DS		KERNEL_DS
+	#endif
 
-static inline void set_fs(mm_segment_t fs)
-{
-	current_thread_info()->addr_limit = fs;
-}
-#endif
+	#ifndef get_fs
+	#define get_fs()                (KERNEL_DS)
+	static inline void set_fs(mm_segment_t fs)
+	{
+		current_thread_info()->addr_limit = fs;
+	}
+	#endif
 
-#ifndef segment_eq
-#define segment_eq(a, b) ((a).seg == (b).seg)
-#endif
+	#ifndef segment_eq
+	#define segment_eq(a, b) ((a).seg == (b).seg)
+	#endif
 
-#define access_ok(addr, size) __access_ok((unsigned long)(addr),(size))
+	/*
+	 * The architecture should really override this if possible, at least
+	 * doing a check on the get_fs()
+	 */
+	#ifndef __access_ok
+	static inline int __access_ok(unsigned long addr, unsigned long size)
+	{
+		return 1;
+	}
+	#endif
+	#define access_ok(addr, size) __access_ok((unsigned long)(addr),(size))
+#else /* CONFIG_MMU */
 
-/*
- * The architecture should really override this if possible, at least
- * doing a check on the get_fs()
- */
-#ifndef __access_ok
-static inline int __access_ok(unsigned long addr, unsigned long size)
-{
-	return 1;
-}
-#endif
+	/*
+	 * uClinux has only one addr space, so has simplified address limits.
+	 */
+	#define USER_DS                 KERNEL_DS
+
+	#define segment_eq(a, b)                (1)
+	#define __addr_ok(addr)         ((void)(addr), 1)
+	#define __range_ok(addr, size)  ((void)(addr), 0)
+	#define get_fs()                (KERNEL_DS)
+
+	static inline void set_fs(mm_segment_t fs)
+	{
+	}
+
+	//#define get_user(x, p)  __get_user(x, p)
+	#define __put_user_check __put_user_nocheck
+
+	#ifndef __access_ok
+	static inline int __access_ok(unsigned long addr, unsigned long size)
+	{
+		return 1;
+	}
+	#endif
+	#define access_ok(addr, size) __access_ok((unsigned long)(addr),(size))
+#endif /* CONFIG_MMU */
 
 /*
  * These are the main single-value transfer routines.  They automatically

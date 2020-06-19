@@ -199,7 +199,9 @@ static inline int init_new_context(struct task_struct *tsk,
 		mm->context.execute_only_pkey = -1;
 	}
 #endif
+	printk(KERN_DEBUG "UML: %s %d fatal=%d\n", __FUNCTION__, __LINE__, fatal_signal_pending(current));
 	init_new_context_ldt(mm);
+	printk(KERN_DEBUG "UML: %s %d fatal=%d\n", __FUNCTION__, __LINE__, fatal_signal_pending(current));
 	return 0;
 }
 static inline void destroy_context(struct mm_struct *mm)

@@ -167,7 +167,10 @@ static void __exit rng_cleanup(void)
 	misc_deregister (&rng_miscdev);
 }
 
+#ifdef CONFIG_MMU
+// enabling this module starts a process (from sigio_broken)
 module_init (rng_init);
+#endif
 module_exit (rng_cleanup);
 __uml_exitcall(cleanup);
 

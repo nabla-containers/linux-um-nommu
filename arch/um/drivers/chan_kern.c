@@ -122,11 +122,13 @@ static int open_chan(struct list_head *chans)
 	return err;
 }
 
+#ifdef CONFIG_UM_SIGWINCH
 void chan_enable_winch(struct chan *chan, struct tty_port *port)
 {
 	if (chan && chan->primary && chan->ops->winch)
 		register_winch(chan->fd, port);
 }
+#endif
 
 static void line_timer_cb(struct work_struct *work)
 {
@@ -158,6 +160,19 @@ int enable_chan(struct line *line)
 			continue;
 		err = line_setup_irq(chan->fd, chan->input, chan->output, line,
 				     chan);
+
+		// rkj: HACK NOT USED ANYMORE, DISABLED rng_init instead in arch/um/drivers/random.c
+		// rkj: XXX hack that i don't really understand. without this, the channel becomes disabled 
+		// for some reason, we get this:
+/*
+	activate_fd: (fd=17) called current=9ec2a040
+	activate_fd: allocating new IRQ entry
+
+--> done again by the same thread:
+
+	activate_fd: (fd=17) called current=9ec2a040
+	Trying to reregister IRQ 2 FD 17 TYPE 0 ID (____ptrval____)   
+ */
 		if (err)
 			goto out_close;
 

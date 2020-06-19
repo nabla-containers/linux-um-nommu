@@ -292,7 +292,9 @@ static int line_activate(struct tty_port *port, struct tty_struct *tty)
 		return ret;
 
 	if (!line->sigio) {
+#ifdef CONFIG_UM_SIGWINCH
 		chan_enable_winch(line->chan_out, port);
+#endif
 		line->sigio = 1;
 	}
 
@@ -302,7 +304,9 @@ static int line_activate(struct tty_port *port, struct tty_struct *tty)
 	return 0;
 }
 
+#ifdef CONFIG_UM_SIGWINCH
 static void unregister_winch(struct tty_struct *tty);
+#endif
 
 static void line_destruct(struct tty_port *port)
 {
@@ -310,7 +314,9 @@ static void line_destruct(struct tty_port *port)
 	struct line *line = tty->driver_data;
 
 	if (line->sigio) {
+#ifdef CONFIG_UM_SIGWINCH
 		unregister_winch(tty);
+#endif
 		line->sigio = 0;
 	}
 }
@@ -582,6 +588,7 @@ int register_lines(struct line_driver *line_driver,
 	return 0;
 }
 
+#ifdef CONFIG_UM_SIGWINCH
 static DEFINE_SPINLOCK(winch_handler_lock);
 static LIST_HEAD(winch_handlers);
 
@@ -737,6 +744,7 @@ static void winch_cleanup(void)
 	spin_unlock(&winch_handler_lock);
 }
 __uml_exitcall(winch_cleanup);
+#endif
 
 char *add_xterm_umid(char *base)
 {

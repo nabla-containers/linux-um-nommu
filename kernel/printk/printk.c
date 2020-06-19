@@ -1798,8 +1798,14 @@ static inline void printk_delay(void)
 
 static inline u32 printk_caller_id(void)
 {
-	return in_task() ? task_pid_nr(current) :
+	int a = in_task();
+	if (a) {
+		return task_pid_nr(current);
+	} else {
 		0x80000000 + raw_smp_processor_id();
+	}
+	//return in_task() ? task_pid_nr(current) :
+	//	0x80000000 + raw_smp_processor_id();
 }
 
 /*
@@ -1899,6 +1905,10 @@ int vprintk_store(int facility, int level,
 	char *text = textbuf;
 	size_t text_len;
 	enum log_flags lflags = 0;
+
+
+	if (strncmp(fmt, "hola", 4) == 0)
+		while(1);
 
 	/*
 	 * The printf needs to come first; we need the syslog

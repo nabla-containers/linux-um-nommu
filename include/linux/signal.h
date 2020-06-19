@@ -54,6 +54,7 @@ enum siginfo_layout siginfo_layout(unsigned sig, int si_code);
 static inline void sigaddset(sigset_t *set, int _sig)
 {
 	unsigned long sig = _sig - 1;
+	printk(KERN_DEBUG "%s sig=%d\n", __FUNCTION__, _sig);
 	if (_NSIG_WORDS == 1)
 		set->sig[0] |= 1UL << sig;
 	else

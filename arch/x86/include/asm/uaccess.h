@@ -23,18 +23,21 @@
 #define MAKE_MM_SEG(s)	((mm_segment_t) { (s) })
 
 #define KERNEL_DS	MAKE_MM_SEG(-1UL)
-#define USER_DS 	MAKE_MM_SEG(TASK_SIZE_MAX)
+
+#ifdef CONFIG_MMU
+
+#define segment_eq(a, b)	((a).seg == (b).seg)
+
+#define USER_DS         MAKE_MM_SEG(TASK_SIZE_MAX)
 
 #define get_fs()	(current->thread.addr_limit)
+
 static inline void set_fs(mm_segment_t fs)
 {
 	current->thread.addr_limit = fs;
 	/* On user-mode return, check fs is correct */
 	set_thread_flag(TIF_FSCHECK);
 }
-
-#define segment_eq(a, b)	((a).seg == (b).seg)
-#define user_addr_max() (current->thread.addr_limit.seg)
 
 /*
  * Test whether a block of memory is a valid user space address.
@@ -65,6 +68,26 @@ static inline bool __chk_range_not_ok(unsigned long addr, unsigned long size, un
 	__chk_range_not_ok((unsigned long __force)(addr), size, limit); \
 })
 
+#else // CONFIG_MMU
+
+/*
+ * uClinux has only one addr space, so has simplified address limits.
+ */
+#define USER_DS                 KERNEL_DS
+
+#define segment_eq(a, b)                (1)
+#define __range_not_ok(addr, size, limit) ((void)(addr), 0)
+#define get_fs()                (KERNEL_DS)
+
+static inline void set_fs(mm_segment_t fs)
+{
+}
+
+#define get_user(x, p)  __get_user(x, p)
+#define __put_user_check __put_user_nocheck
+
+#endif // CONFIG_MMU
+
 #ifdef CONFIG_DEBUG_ATOMIC_SLEEP
 static inline bool pagefault_disabled(void);
 # define WARN_ON_IN_IRQ()	\
@@ -72,6 +95,8 @@ static inline bool pagefault_disabled(void);
 #else
 # define WARN_ON_IN_IRQ()
 #endif
+
+#define user_addr_max() (current->thread.addr_limit.seg)
 
 /**
  * access_ok - Checks if a user space pointer is valid

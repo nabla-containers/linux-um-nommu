@@ -36,7 +36,7 @@ static void *tty_chan_init(char *str, int device, const struct chan_opts *opts)
 	return data;
 }
 
-static int tty_open(int input, int output, int primary, void *d,
+static int __um_tty_open(int input, int output, int primary, void *d,
 		    char **dev_out)
 {
 	struct tty_chan *data = d;
@@ -52,6 +52,8 @@ static int tty_open(int input, int output, int primary, void *d,
 	fd = open(data->dev, mode);
 	if (fd < 0)
 		return -errno;
+
+	printk(KERN_ERR "%s: fd=%d\n", __FUNCTION__, fd);
 
 	if (data->raw) {
 		CATCH_EINTR(err = tcgetattr(fd, &data->tt));
@@ -70,7 +72,7 @@ static int tty_open(int input, int output, int primary, void *d,
 const struct chan_ops tty_ops = {
 	.type		= "tty",
 	.init		= tty_chan_init,
-	.open		= tty_open,
+	.open		= __um_tty_open,
 	.close		= generic_close,
 	.read		= generic_read,
 	.write		= generic_write,

@@ -1107,6 +1107,9 @@ unsigned long do_mmap(struct file *file,
 	unsigned long capabilities, result;
 	int ret;
 
+	//printk(KERN_DEBUG "%s %d file=%lx addr=%lx len=%lx prot=%lx flags=%lx vm_flags=%lx pgoff=%lx\n",
+	//	__FUNCTION__, __LINE__, file, addr, len, prot, flags, vm_flags, pgoff);
+
 	*populate = 0;
 
 	/* decide whether we should attempt the mapping, and if so what sort of
@@ -1580,6 +1583,11 @@ int vm_brk(unsigned long addr, unsigned long len)
 	return -ENOMEM;
 }
 
+int vm_brk_flags(unsigned long addr, unsigned long request, unsigned long flags)
+{
+	return -ENOMEM;
+}
+
 /*
  * expand (or shrink) an existing mapping, potentially moving it at the same
  * time (controlled by the MREMAP_MAYMOVE flag and available VM space)
@@ -1876,3 +1884,8 @@ static int __meminit init_admin_reserve(void)
 	return 0;
 }
 subsys_initcall(init_admin_reserve);
+
+SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
+{
+	return 0;
+}

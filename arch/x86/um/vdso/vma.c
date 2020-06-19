@@ -9,6 +9,7 @@
 #include <asm/page.h>
 #include <asm/elf.h>
 #include <linux/init.h>
+#include <linux/mman.h>
 
 static unsigned int __read_mostly vdso_enabled = 1;
 unsigned long um_vdso_addr;
@@ -17,14 +18,15 @@ extern unsigned long task_size;
 extern char vdso_start[], vdso_end[];
 
 static struct page **vdsop;
+static struct page *um_vdso;
 
 static int __init init_vdso(void)
 {
-	struct page *um_vdso;
-
 	BUG_ON(vdso_end - vdso_start > PAGE_SIZE);
 
+#ifdef CONFIG_MMU
 	um_vdso_addr = task_size - PAGE_SIZE;
+#endif
 
 	vdsop = kmalloc(sizeof(struct page *), GFP_KERNEL);
 	if (!vdsop)
@@ -37,8 +39,18 @@ static int __init init_vdso(void)
 		goto oom;
 	}
 
-	copy_page(page_address(um_vdso), vdso_start);
+	unsigned long pg_um_vdso = page_address(um_vdso);
+
+	printk(KERN_ERR "vdso_start=%lx um_vdso_addr=%lx pg_um_vdso=%lx\n\r",
+		vdso_start, um_vdso_addr, pg_um_vdso);
+	copy_page(pg_um_vdso, vdso_start);
 	*vdsop = um_vdso;
+
+#ifndef CONFIG_MMU
+	// rkj: this is fine with NOMMU as everything is accessible
+	um_vdso_addr = pg_um_vdso;
+	printk(KERN_ERR "map vdso um_vdso_addr=%lx\r\n", um_vdso_addr);
+#endif
 
 	return 0;
 
@@ -50,6 +62,7 @@ oom:
 }
 subsys_initcall(init_vdso);
 
+#ifdef CONFIG_MMU
 int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp)
 {
 	int err;
@@ -70,3 +83,4 @@ int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp)
 
 	return err;
 }
+#endif

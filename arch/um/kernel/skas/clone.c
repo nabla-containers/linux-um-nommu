@@ -27,6 +27,10 @@ stub_clone_handler(void)
 	struct stub_data *data = (struct stub_data *) STUB_DATA;
 	long err;
 
+#ifndef CONFIG_MMU
+	while(1);
+#endif
+
 	err = stub_syscall2(__NR_clone, CLONE_PARENT | CLONE_FILES | SIGCHLD,
 			    STUB_DATA + UM_KERN_PAGE_SIZE / 2 - sizeof(void *));
 	if (err != 0)

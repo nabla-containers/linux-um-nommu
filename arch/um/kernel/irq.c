@@ -65,6 +65,8 @@ void sigio_handler(int sig, struct siginfo *unused_si, struct uml_pt_regs *regs)
 	struct irq_entry *irq_entry;
 	struct irq_fd *irq;
 
+	//printk(KERN_ERR "%s: current=%lx\n", __FUNCTION__, current);
+
 	int n, i, j;
 
 	while (1) {
@@ -134,6 +136,7 @@ static int activate_fd(int irq, int fd, int type, void *dev_id)
 	int i, err, events;
 	unsigned long flags;
 
+	printk(KERN_ERR "%s: (fd=%d) called current=%lx\n", __FUNCTION__, fd, current);
 	err = os_set_fd_async(fd);
 	if (err < 0)
 		goto out;
@@ -150,6 +153,7 @@ static int activate_fd(int irq, int fd, int type, void *dev_id)
 	}
 
 	if (irq_entry == NULL) {
+		printk(KERN_ERR "%s: allocating new IRQ entry\n", __FUNCTION__);
 		/* This needs to be atomic as it may be called from an
 		 * IRQ context.
 		 */
@@ -207,10 +211,12 @@ static int activate_fd(int irq, int fd, int type, void *dev_id)
 	spin_unlock_irqrestore(&irq_lock, flags);
 	maybe_sigio_broken(fd, (type != IRQ_NONE));
 
+	printk(KERN_ERR "%s: (fd=%d) success\n", __FUNCTION__, fd);
 	return 0;
 out_unlock:
 	spin_unlock_irqrestore(&irq_lock, flags);
 out:
+	printk(KERN_ERR "%s: (fd=%d) failed\n", __FUNCTION__, fd);
 	return err;
 }
 
@@ -441,6 +447,7 @@ int um_request_irq(unsigned int irq, int fd, int type,
 			return err;
 	}
 
+	// why is this failing for /dev/random ?
 	return request_irq(irq, handler, irqflags, devname, dev_id);
 }
 
@@ -480,7 +487,8 @@ void __init init_IRQ(void)
 	irq_set_chip_and_handler(TIMER_IRQ, &SIGVTALRM_irq_type, handle_edge_irq);
 
 
-	for (i = 1; i < LAST_IRQ; i++)
+	// rkj: added the <= as RANDOM was not accessed
+	for (i = 1; i <= LAST_IRQ; i++)
 		irq_set_chip_and_handler(i, &normal_irq_type, handle_edge_irq);
 	/* Initialize EPOLL Loop */
 	os_setup_epoll();

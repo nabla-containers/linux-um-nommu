@@ -152,6 +152,7 @@ static bool recalc_sigpending_tsk(struct task_struct *t)
 	    PENDING(&t->pending, &t->blocked) ||
 	    PENDING(&t->signal->shared_pending, &t->blocked) ||
 	    cgroup_task_frozen(t)) {
+		// RKJ: signals printk(KERN_DEBUG "%s set TIF_SIGPENDING\n", __FUNCTION__);
 		set_tsk_thread_flag(t, TIF_SIGPENDING);
 		return true;
 	}
@@ -177,8 +178,10 @@ void recalc_sigpending_and_wake(struct task_struct *t)
 void recalc_sigpending(void)
 {
 	if (!recalc_sigpending_tsk(current) && !freezing(current) &&
-	    !klp_patch_pending(current))
+	    !klp_patch_pending(current)) {
+		// RKJ: signals printk(KERN_DEBUG "%s t=%lx CLR TIF_SIGPENDING\n", __FUNCTION__, current);
 		clear_thread_flag(TIF_SIGPENDING);
+	}
 
 }
 EXPORT_SYMBOL(recalc_sigpending);
@@ -188,6 +191,7 @@ void calculate_sigpending(void)
 	/* Have any signals or users of TIF_SIGPENDING been delayed
 	 * until after fork?
 	 */
+	// RKJ: signals printk(KERN_DEBUG "%s current=%lx set TIF_SIGPENDING\n", __FUNCTION__, current);
 	spin_lock_irq(&current->sighand->siglock);
 	set_tsk_thread_flag(current, TIF_SIGPENDING);
 	recalc_sigpending();
@@ -279,6 +283,7 @@ static inline void print_dropped_signal(int sig)
  */
 bool task_set_jobctl_pending(struct task_struct *task, unsigned long mask)
 {
+	// RKJ: signals printk(KERN_DEBUG "%s current=%lx task=%lx\n", __FUNCTION__, current, task);
 	BUG_ON(mask & ~(JOBCTL_PENDING_MASK | JOBCTL_STOP_CONSUME |
 			JOBCTL_STOP_SIGMASK | JOBCTL_TRAPPING));
 	BUG_ON((mask & JOBCTL_TRAPPING) && !(mask & JOBCTL_PENDING_MASK));
@@ -748,6 +753,7 @@ still_pending:
  */
 void signal_wake_up_state(struct task_struct *t, unsigned int state)
 {
+	// RKJ: signals printk(KERN_DEBUG "%s t=%lx set TIF_SIGPENDING\n", __FUNCTION__, t);
 	set_tsk_thread_flag(t, TIF_SIGPENDING);
 	/*
 	 * TASK_WAKEKILL also means wake it up in the stopped/traced/killable
@@ -981,6 +987,7 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 	struct signal_struct *signal = p->signal;
 	struct task_struct *t;
 
+	// RKJ: signals printk(KERN_DEBUG "UML: %s %d current=%lx tsk=%lx\n", __FUNCTION__, __LINE__, current, p);
 	/*
 	 * Now find a thread we can wake up to take the signal off the queue.
 	 *
@@ -1013,6 +1020,7 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 		signal->curr_target = t;
 	}
 
+	// RKJ: signals printk(KERN_DEBUG "UML: %s %d current=%lx tsk=%lx\n", __FUNCTION__, __LINE__, current, t);
 	/*
 	 * Found a killable thread.  If the signal will be fatal,
 	 * then start taking the whole group down immediately.
@@ -1038,6 +1046,7 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 			do {
 				task_clear_jobctl_pending(t, JOBCTL_PENDING_MASK);
 				sigaddset(&t->pending.signal, SIGKILL);
+				// RKJ: signals printk(KERN_DEBUG "UML: %s %d current=%lx tsk=%lx\n", __FUNCTION__, __LINE__, current, t);
 				signal_wake_up(t, 1);
 			} while_each_thread(p, t);
 			return;
@@ -1048,6 +1057,7 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 	 * The signal is already in the shared-pending queue.
 	 * Tell the chosen thread to wake up and dequeue it.
 	 */
+	// RKJ: signals printk(KERN_DEBUG "UML: %s %d current=%lx tsk=%lx\n", __FUNCTION__, __LINE__, current, t);
 	signal_wake_up(t, sig == SIGKILL);
 	return;
 }
@@ -1067,6 +1077,7 @@ static int __send_signal(int sig, struct kernel_siginfo *info, struct task_struc
 
 	assert_spin_locked(&t->sighand->siglock);
 
+	// RKJ: signals printk(KERN_DEBUG "UML: %s %d current=%lx tsk=%lx\n", __FUNCTION__, __LINE__, current, t);
 	result = TRACE_SIGNAL_IGNORED;
 	if (!prepare_signal(sig, t, force))
 		goto ret;
@@ -1200,6 +1211,7 @@ static int send_signal(int sig, struct kernel_siginfo *info, struct task_struct 
 {
 	/* Should SIGKILL or SIGSTOP be received by a pid namespace init? */
 	bool force = false;
+	// RKJ: signals printk(KERN_DEBUG "UML: %s %d current=%lx tsk=%lx\n", __FUNCTION__, __LINE__, current, t);
 
 	if (info == SEND_SIG_NOINFO) {
 		/* Force if sent from an ancestor pid namespace */
@@ -1267,6 +1279,7 @@ __setup("print-fatal-signals=", setup_print_fatal_signals);
 int
 __group_send_sig_info(int sig, struct kernel_siginfo *info, struct task_struct *p)
 {
+	// RKJ: signals printk(KERN_DEBUG "UML: %s %d current=%lx tsk=%lx\n", __FUNCTION__, __LINE__, current, p);
 	return send_signal(sig, info, p, PIDTYPE_TGID);
 }
 
@@ -1904,6 +1917,7 @@ bool do_notify_parent(struct task_struct *tsk, int sig)
 	bool autoreap = false;
 	u64 utime, stime;
 
+	// RKJ: signals printk(KERN_DEBUG "UML: %s %d current=%lx tsk=%lx sig=%d\n", __FUNCTION__, __LINE__, current, tsk, sig);
 	BUG_ON(sig == -1);
 
  	/* do_notify_parent_cldstop should have been called instead.  */
@@ -2342,6 +2356,7 @@ static bool do_signal_stop(int signr)
 			if (!task_is_stopped(t) &&
 			    task_set_jobctl_pending(t, signr | gstop)) {
 				sig->group_stop_count++;
+				// RKJ: signals printk(KERN_DEBUG "UML: %s %d current=%lx tsk=%lx\n", __FUNCTION__, __LINE__, current, t);
 				if (likely(!(t->ptrace & PT_SEIZED)))
 					signal_wake_up(t, 0);
 				else
@@ -2793,6 +2808,7 @@ static void retarget_shared_pending(struct task_struct *tsk, sigset_t *which)
 		/* Remove the signals this thread can handle. */
 		sigandsets(&retarget, &retarget, &t->blocked);
 
+		// RKJ: signals printk(KERN_DEBUG "UML: %s %d current=%lx tsk=%lx\n", __FUNCTION__, __LINE__, current, t);
 		if (!signal_pending(t))
 			signal_wake_up(t, 0);
 
@@ -2920,6 +2936,7 @@ void __set_current_blocked(const sigset_t *newset)
  */
 int sigprocmask(int how, sigset_t *set, sigset_t *oldset)
 {
+#ifdef CONFIG_MMU
 	struct task_struct *tsk = current;
 	sigset_t newset;
 
@@ -2942,6 +2959,7 @@ int sigprocmask(int how, sigset_t *set, sigset_t *oldset)
 	}
 
 	__set_current_blocked(&newset);
+#endif
 	return 0;
 }
 EXPORT_SYMBOL(sigprocmask);
@@ -3004,6 +3022,7 @@ int set_compat_user_sigmask(const compat_sigset_t __user *umask,
 SYSCALL_DEFINE4(rt_sigprocmask, int, how, sigset_t __user *, nset,
 		sigset_t __user *, oset, size_t, sigsetsize)
 {
+#ifdef CONFIG_MMU
 	sigset_t old_set, new_set;
 	int error;
 
@@ -3022,13 +3041,14 @@ SYSCALL_DEFINE4(rt_sigprocmask, int, how, sigset_t __user *, nset,
 		if (error)
 			return error;
 	}
-
 	if (oset) {
 		if (copy_to_user(oset, &old_set, sizeof(sigset_t)))
 			return -EFAULT;
 	}
-
 	return 0;
+#else
+	return 0;
+#endif
 }
 
 #ifdef CONFIG_COMPAT
@@ -4221,6 +4241,8 @@ SYSCALL_DEFINE4(rt_sigaction, int, sig,
 		struct sigaction __user *, oact,
 		size_t, sigsetsize)
 {
+	// RKJ: signals printk(KERN_DEBUG "%s %d\n", __FUNCTION__, sig);
+#ifdef CONFIG_MMU
 	struct k_sigaction new_sa, old_sa;
 	int ret;
 
@@ -4239,6 +4261,10 @@ SYSCALL_DEFINE4(rt_sigaction, int, sig,
 		return -EFAULT;
 
 	return 0;
+#else
+	// rkj: XXX: implement me for UM NOMMU
+	return 0;
+#endif
 }
 #ifdef CONFIG_COMPAT
 COMPAT_SYSCALL_DEFINE4(rt_sigaction, int, sig,

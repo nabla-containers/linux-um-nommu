@@ -90,6 +90,9 @@ EXPORT_PER_CPU_SYMBOL(cpu_tss_rw);
 DEFINE_PER_CPU(bool, __tss_limit_invalid);
 EXPORT_PER_CPU_SYMBOL_GPL(__tss_limit_invalid);
 
+DEFINE_PER_CPU(long, cpu_return_ip);
+EXPORT_PER_CPU_SYMBOL_GPL(cpu_return_ip);
+
 /*
  * this gets called so that we can store lazy state into memory and copy the
  * current task into the new thread.

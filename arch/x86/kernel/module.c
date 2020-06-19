@@ -65,6 +65,7 @@ static unsigned long int get_module_load_offset(void)
 }
 #endif
 
+#ifdef CONFIG_MMU
 void *module_alloc(unsigned long size)
 {
 	void *p;
@@ -84,6 +85,7 @@ void *module_alloc(unsigned long size)
 
 	return p;
 }
+#endif
 
 #ifdef CONFIG_X86_32
 int apply_relocate(Elf32_Shdr *sechdrs,

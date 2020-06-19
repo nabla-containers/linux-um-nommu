@@ -56,6 +56,18 @@ typedef char *elf_caddr_t;
 
 MODULE_LICENSE("GPL");
 
+extern void __kernel_vsyscall(void);
+
+#if ELF_EXEC_PAGESIZE > PAGE_SIZE
+#define ELF_MIN_ALIGN	ELF_EXEC_PAGESIZE
+#else
+#define ELF_MIN_ALIGN	PAGE_SIZE
+#endif
+
+#define ELF_PAGESTART(_v) ((_v) & ~(unsigned long)(ELF_MIN_ALIGN-1))
+#define ELF_PAGEOFFSET(_v) ((_v) & (ELF_MIN_ALIGN-1))
+#define ELF_PAGEALIGN(_v) (((_v) + ELF_MIN_ALIGN - 1) & ~(ELF_MIN_ALIGN - 1))
+
 static int load_elf_fdpic_binary(struct linux_binprm *);
 static int elf_fdpic_fetch_phdrs(struct elf_fdpic_params *, struct file *);
 static int elf_fdpic_map_file(struct elf_fdpic_params *, struct file *,
@@ -138,7 +150,7 @@ static int is_constdisp(struct elfhdr *hdr)
 static int elf_fdpic_fetch_phdrs(struct elf_fdpic_params *params,
 				 struct file *file)
 {
-	struct elf32_phdr *phdr;
+	struct elf_phdr *phdr;
 	unsigned long size;
 	int retval, loop;
 	loff_t pos = params->hdr.e_phoff;
@@ -382,6 +394,7 @@ static int load_elf_fdpic_binary(struct linux_binprm *bprm)
 #endif
 
 	/* load the executable and interpreter into memory */
+	// rkj: key
 	retval = elf_fdpic_map_file(&exec_params, bprm->file, current->mm,
 				    "executable");
 	if (retval < 0)
@@ -462,6 +475,8 @@ static int load_elf_fdpic_binary(struct linux_binprm *bprm)
 	finalize_exec(bprm);
 	/* everything is now ready... get the userspace context ready to roll */
 	entryaddr = interp_params.entry_addr ?: exec_params.entry_addr;
+
+	// rkj: KEY !
 	start_thread(regs, entryaddr, current->mm->start_stack);
 
 	retval = 0;
@@ -559,8 +574,8 @@ static int create_elf_fdpic_tables(struct linux_binprm *bprm,
 	sp &= ~7UL;
 
 	/* stack the load map(s) */
-	len = sizeof(struct elf32_fdpic_loadmap);
-	len += sizeof(struct elf32_fdpic_loadseg) * exec_params->loadmap->nsegs;
+	len = sizeof(struct elf_fdpic_loadmap);
+	len += sizeof(struct elf_fdpic_loadseg) * exec_params->loadmap->nsegs;
 	sp = (sp - len) & ~7UL;
 	exec_params->map_addr = sp;
 
@@ -570,8 +585,8 @@ static int create_elf_fdpic_tables(struct linux_binprm *bprm,
 	current->mm->context.exec_fdpic_loadmap = (unsigned long) sp;
 
 	if (interp_params->loadmap) {
-		len = sizeof(struct elf32_fdpic_loadmap);
-		len += sizeof(struct elf32_fdpic_loadseg) *
+		len = sizeof(struct elf_fdpic_loadmap);
+		len += sizeof(struct elf_fdpic_loadseg) *
 			interp_params->loadmap->nsegs;
 		sp = (sp - len) & ~7UL;
 		interp_params->map_addr = sp;
@@ -647,6 +662,7 @@ static int create_elf_fdpic_tables(struct linux_binprm *bprm,
 	NEW_AUX_ENT(AT_PHENT,	sizeof(struct elf_phdr));
 	NEW_AUX_ENT(AT_PHNUM,	exec_params->hdr.e_phnum);
 	NEW_AUX_ENT(AT_BASE,	interp_params->elfhdr_addr);
+	kdebug("AT_BASE=%lx", interp_params->elfhdr_addr);
 	NEW_AUX_ENT(AT_FLAGS,	0);
 	NEW_AUX_ENT(AT_ENTRY,	exec_params->entry_addr);
 	NEW_AUX_ENT(AT_UID,	(elf_addr_t) from_kuid_munged(cred->user_ns, cred->uid));
@@ -654,17 +670,19 @@ static int create_elf_fdpic_tables(struct linux_binprm *bprm,
 	NEW_AUX_ENT(AT_GID,	(elf_addr_t) from_kgid_munged(cred->user_ns, cred->gid));
 	NEW_AUX_ENT(AT_EGID,	(elf_addr_t) from_kgid_munged(cred->user_ns, cred->egid));
 	NEW_AUX_ENT(AT_SECURE,	bprm->secureexec);
+	bprm->exec += exec_params->load_addr;
 	NEW_AUX_ENT(AT_EXECFN,	bprm->exec);
 
-#ifdef ARCH_DLINFO
 	nr = 0;
 	csp -= AT_VECTOR_SIZE_ARCH * 2 * sizeof(unsigned long);
 
+#ifdef ARCH_DLINFO
 	/* ARCH_DLINFO must come last so platform specific code can enforce
 	 * special alignment requirements on the AUXV if necessary (eg. PPC).
 	 */
 	ARCH_DLINFO;
 #endif
+	NEW_AUX_ENT(AT_SYSINFO, __kernel_vsyscall);
 #undef NEW_AUX_ENT
 
 	/* allocate room for argv[] and envv[] */
@@ -725,17 +743,18 @@ static int create_elf_fdpic_tables(struct linux_binprm *bprm,
  *   - we assume the loadable parts of the image to require fixed displacement
  *   - the image is not shareable
  */
+// rkj: assume no MMU
 static int elf_fdpic_map_file(struct elf_fdpic_params *params,
 			      struct file *file,
 			      struct mm_struct *mm,
 			      const char *what)
 {
-	struct elf32_fdpic_loadmap *loadmap;
+	struct elf_fdpic_loadmap *loadmap;
 #ifdef CONFIG_MMU
-	struct elf32_fdpic_loadseg *mseg;
+	struct elf_fdpic_loadseg *mseg;
 #endif
-	struct elf32_fdpic_loadseg *seg;
-	struct elf32_phdr *phdr;
+	struct elf_fdpic_loadseg *seg;
+	struct elf_phdr *phdr;
 	unsigned long load_addr, stop;
 	unsigned nloads, tmp;
 	size_t size;
@@ -761,7 +780,7 @@ static int elf_fdpic_map_file(struct elf_fdpic_params *params,
 	loadmap->nsegs = nloads;
 
 	load_addr = params->load_addr;
-	seg = loadmap->segs;
+	seg = params->loadmap->segs;
 
 	/* map the requested LOADs into the memory space */
 	switch (params->flags & ELF_FDPIC_FLAG_ARRANGEMENT) {
@@ -782,13 +801,15 @@ static int elf_fdpic_map_file(struct elf_fdpic_params *params,
 
 	/* map the entry point */
 	if (params->hdr.e_entry) {
-		seg = loadmap->segs;
+		seg = params->loadmap->segs;
 		for (loop = loadmap->nsegs; loop > 0; loop--, seg++) {
-			if (params->hdr.e_entry >= seg->p_vaddr &&
-			    params->hdr.e_entry < seg->p_vaddr + seg->p_memsz) {
+			if ((params->hdr.e_entry >= seg->p_vaddr) &&
+			    (params->hdr.e_entry < (seg->p_vaddr + seg->p_memsz))) {
 				params->entry_addr =
 					(params->hdr.e_entry - seg->p_vaddr) +
 					seg->addr;
+				kdebug("entry[%d]=%lx vaddr=%lx addr=%lx",
+					loop, params->hdr.e_entry, seg->p_vaddr, seg->addr);
 				break;
 			}
 		}
@@ -807,7 +828,7 @@ static int elf_fdpic_map_file(struct elf_fdpic_params *params,
 		    phdr->p_offset + phdr->p_filesz < stop)
 			continue;
 
-		seg = loadmap->segs;
+		seg = params->loadmap->segs;
 		for (loop = loadmap->nsegs; loop > 0; loop--, seg++) {
 			if (phdr->p_vaddr >= seg->p_vaddr &&
 			    phdr->p_vaddr + phdr->p_filesz <=
@@ -828,27 +849,31 @@ static int elf_fdpic_map_file(struct elf_fdpic_params *params,
 		if (phdr->p_type != PT_DYNAMIC)
 			continue;
 
-		seg = loadmap->segs;
+		seg = params->loadmap->segs;
 		for (loop = loadmap->nsegs; loop > 0; loop--, seg++) {
+			kdebug("load segment p_vaddr=%lx seg->p_memsz", seg->p_vaddr, seg->p_memsz);
 			if (phdr->p_vaddr >= seg->p_vaddr &&
 			    phdr->p_vaddr + phdr->p_memsz <=
 			    seg->p_vaddr + seg->p_memsz) {
-				Elf32_Dyn __user *dyn;
-				Elf32_Sword d_tag;
+				Elf_Dyn __user *dyn;
+				Elf64_Sword d_tag;
 
 				params->dynamic_addr =
 					(phdr->p_vaddr - seg->p_vaddr) +
 					seg->addr;
 
+				kdebug("dynamic_addr=%lx",
+					params->dynamic_addr);
+
 				/* check the dynamic section contains at least
 				 * one item, and that the last item is a NULL
 				 * entry */
 				if (phdr->p_memsz == 0 ||
-				    phdr->p_memsz % sizeof(Elf32_Dyn) != 0)
+				    phdr->p_memsz % sizeof(Elf_Dyn) != 0)
 					goto dynamic_error;
 
-				tmp = phdr->p_memsz / sizeof(Elf32_Dyn);
-				dyn = (Elf32_Dyn __user *)params->dynamic_addr;
+				tmp = phdr->p_memsz / sizeof(Elf_Dyn);
+				dyn = (Elf_Dyn __user *)params->dynamic_addr;
 				__get_user(d_tag, &dyn[tmp - 1].d_tag);
 				if (d_tag != 0)
 					goto dynamic_error;
@@ -892,7 +917,7 @@ static int elf_fdpic_map_file(struct elf_fdpic_params *params,
 	kdebug("- entry    : %lx", params->entry_addr);
 	kdebug("- PHDR[]   : %lx", params->ph_addr);
 	kdebug("- DYNAMIC[]: %lx", params->dynamic_addr);
-	seg = loadmap->segs;
+	seg = params->loadmap->segs;
 	for (loop = 0; loop < loadmap->nsegs; loop++, seg++)
 		kdebug("- LOAD[%d] : %08x-%08x [va=%x ms=%x]",
 		       loop,
@@ -917,9 +942,10 @@ static int elf_fdpic_map_file_constdisp_on_uclinux(
 	struct file *file,
 	struct mm_struct *mm)
 {
-	struct elf32_fdpic_loadseg *seg;
-	struct elf32_phdr *phdr;
+	struct elf_fdpic_loadseg *seg;
+	struct elf_phdr *phdr;
 	unsigned long load_addr, base = ULONG_MAX, top = 0, maddr = 0, mflags;
+	int load_addr_set = 0;
 	int loop, ret;
 
 	load_addr = params->load_addr;
@@ -961,6 +987,15 @@ static int elf_fdpic_map_file_constdisp_on_uclinux(
 		seg->p_vaddr = phdr->p_vaddr;
 		seg->p_memsz = phdr->p_memsz;
 
+		if (!load_addr_set) {
+			load_addr_set = 1;
+			params->load_addr = seg->addr - ELF_PAGESTART(phdr->p_vaddr);
+			kdebug("load_addr %lx", params->load_addr);
+		}
+
+		kdebug("current=%lx read_code file=%lx addr=%lx off=%lx sz=%lx",
+				current, file, seg->addr, phdr->p_offset,
+				       phdr->p_filesz);
 		ret = read_code(file, seg->addr, phdr->p_offset,
 				       phdr->p_filesz);
 		if (ret < 0)
@@ -1005,8 +1040,8 @@ static int elf_fdpic_map_file_by_direct_mmap(struct elf_fdpic_params *params,
 					     struct file *file,
 					     struct mm_struct *mm)
 {
-	struct elf32_fdpic_loadseg *seg;
-	struct elf32_phdr *phdr;
+	struct elf_fdpic_loadseg *seg;
+	struct elf_phdr *phdr;
 	unsigned long load_addr, delta_vaddr;
 	int loop, dvset;
 

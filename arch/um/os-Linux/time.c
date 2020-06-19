@@ -15,6 +15,15 @@
 #include <os.h>
 #include <string.h>
 #include <timer-internal.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <asm/prctl.h> /* XXX This should get the constants from libc */
+#include <linux/kconfig.h>
+
+
 
 static timer_t event_high_res_timer = 0;
 
@@ -91,11 +100,22 @@ void os_timer_disable(void)
 	timer_settime(event_high_res_timer, 0, &its, NULL);
 }
 
+extern long long host_fs;
+
 long long os_nsecs(void)
 {
 	struct timespec ts;
+	unsigned long long addr;
 
-	clock_gettime(CLOCK_MONOTONIC,&ts);
+#if !IS_ENABLED(CONFIG_STATIC_LINK)
+	os_arch_prctl(0, ARCH_GET_FS, (void *)&addr);
+	if (host_fs != -1)
+		os_arch_prctl(0, ARCH_SET_FS, host_fs);
+#endif
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+#if !IS_ENABLED(CONFIG_STATIC_LINK)
+	os_arch_prctl(0, ARCH_SET_FS, addr);
+#endif
 	return timespec_to_ns(&ts);
 }
 

@@ -24,6 +24,7 @@
 #define STAT_PATH_LEN sizeof("/proc/#######/stat\0")
 #define COMM_SCANF "%*[^)])"
 
+#ifdef CONFIG_MMU
 unsigned long os_process_pc(int pid)
 {
 	char proc_stat[STAT_PATH_LEN], buf[256];
@@ -89,6 +90,7 @@ int os_process_parent(int pid)
 
 	return parent;
 }
+#endif
 
 void os_alarm_process(int pid)
 {
@@ -144,8 +146,13 @@ int os_map_memory(void *virt, int fd, unsigned long long off, unsigned long len,
 	prot = (r ? PROT_READ : 0) | (w ? PROT_WRITE : 0) |
 		(x ? PROT_EXEC : 0);
 
+#ifdef CONFIG_MMU
 	loc = mmap64((void *) virt, len, prot, MAP_SHARED | MAP_FIXED,
 		     fd, off);
+#else
+	loc = mmap64((void *) virt, len, prot, MAP_SHARED | MAP_FIXED | MAP_ANONYMOUS,
+		     fd, off);
+#endif
 	if (loc == MAP_FAILED)
 		return -errno;
 	return 0;

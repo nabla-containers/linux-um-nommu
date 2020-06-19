@@ -16,6 +16,7 @@
 #include <kern_util.h>
 #include <os.h>
 #include <um_malloc.h>
+#include <asm/prctl.h> /* XXX This should get the constants from libc */
 
 #define PGD_BOUND (4 * 1024 * 1024)
 #define STACKSIZE (8 * 1024 * 1024)
@@ -104,6 +105,8 @@ static void setup_env_path(void)
 
 extern void scan_elf_aux( char **envp);
 
+extern long long host_fs;
+
 int __init main(int argc, char **argv, char **envp)
 {
 	char **new_argv;
@@ -143,6 +146,10 @@ int __init main(int argc, char **argv, char **envp)
 	change_sig(SIGPIPE, 0);
 	ret = linux_main(argc, argv);
 
+#ifndef CONFIG_MMU
+	os_arch_prctl(0, ARCH_SET_FS, (void *)host_fs);
+#endif
+
 	/*
 	 * Disable SIGPROF - I have no idea why libc doesn't do this or turn
 	 * off the profiling time, but UML dies with a SIGPROF just before
@@ -179,6 +186,7 @@ int __init main(int argc, char **argv, char **envp)
 		perror("Failed to exec kernel");
 		ret = 1;
 	}
+
 	return uml_exitcode;
 }
 

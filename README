@@ -16,3 +16,42 @@ several of them using the Restructured Text markup notation.
 Please read the Documentation/process/changes.rst file, as it contains the
 requirements for building and running the kernel, and information about
 the problems which may result by upgrading your kernel.
+
+Linux nommu + user-mode
+=======================
+
+Quick test:
+``
+sudo docker run -it kollerr/linux-um-nommu-build sh -c "cd /linux-um-nommu/ && ./vmlinux ubd0=layer,tests/alpine-test.ext3 rw mem=512m loglevel=0 init=/bin/sh"
+``
+
+Build:
+``
+sudo docker run -it kollerr/linux-um-nommu-build bash
+$ cd /linux-um-nommu/
+$ make ARCH=um -j8
+``
+
+Tests:
+Run an alpine container:
+``
+$ cd /linux-um-nommu/tests
+$ make demo
+``
+
+Run a simple program without musl:
+``
+$ cd /linux-um-nommu/tests
+$ ../vmlinux ubda=./test_libc.iso ro loglevel=0 mem=1024m init=/noop
+``
+
+To build a new (alpine) image, look at how alpine-test.ext3 is built.
+In order to access the host docker daemon from the container, run it with:
+``
+sudo docker run -it -v /var/run/docker.sock:/var/run/docker.sock kollerr/linux-um-nommu-build bash
+``
+
+``
+$ cd /linux-um-nommu/tests
+$ make alpine-test.ext3
+``

@@ -560,6 +560,10 @@ static struct task_struct *find_alive_thread(struct task_struct *p)
 	return NULL;
 }
 
+#ifndef CONFIG_MMU
+extern void machine_halt(void);
+#endif
+
 static struct task_struct *find_child_reaper(struct task_struct *father,
 						struct list_head *dead)
 	__releases(&tasklist_lock)
@@ -580,8 +584,12 @@ static struct task_struct *find_child_reaper(struct task_struct *father,
 
 	write_unlock_irq(&tasklist_lock);
 	if (unlikely(pid_ns == &init_pid_ns)) {
+#ifdef CONFIG_MMU
 		panic("Attempted to kill init! exitcode=0x%08x\n",
 			father->signal->group_exit_code ?: father->exit_code);
+#else
+		machine_halt();
+#endif
 	}
 
 	list_for_each_entry_safe(p, n, dead, ptrace_entry) {

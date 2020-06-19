@@ -69,6 +69,8 @@ void do_signal(struct pt_regs *regs)
 	struct ksignal ksig;
 	int handled_sig = 0;
 
+	printk("%s\n", __FUNCTION__);
+
 	while (get_signal(&ksig)) {
 		handled_sig = 1;
 		/* Whee!  Actually deliver the signal.  */

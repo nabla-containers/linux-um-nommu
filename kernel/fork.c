@@ -245,6 +245,8 @@ static unsigned long *alloc_thread_stack_node(struct task_struct *tsk, int node)
 	}
 	return stack;
 #else
+	// rkj: here is where the stack gets allocated
+	// been looking for this FOREVER
 	struct page *page = alloc_pages_node(node, THREADINFO_GFP,
 					     THREAD_SIZE_ORDER);
 
@@ -1043,14 +1045,15 @@ fail_nopgd:
  */
 struct mm_struct *mm_alloc(void)
 {
-	struct mm_struct *mm;
+	struct mm_struct *mm, *ret;
 
 	mm = allocate_mm();
 	if (!mm)
 		return NULL;
 
 	memset(mm, 0, sizeof(*mm));
-	return mm_init(mm, current, current_user_ns());
+	ret = mm_init(mm, current, current_user_ns());
+	return ret;
 }
 
 static inline void __mmput(struct mm_struct *mm)
@@ -1314,8 +1317,9 @@ void mm_release(struct task_struct *tsk, struct mm_struct *mm)
 	 * All done, finally we can wake up parent and return this mm to him.
 	 * Also kthread_stop() uses this completion for synchronization.
 	 */
-	if (tsk->vfork_done)
+	if (tsk->vfork_done) {
 		complete_vfork_done(tsk);
+	}
 }
 
 /**
@@ -1426,6 +1430,7 @@ static int copy_fs(unsigned long clone_flags, struct task_struct *tsk)
 		spin_unlock(&fs->lock);
 		return 0;
 	}
+	// rkj: this is not working XXX
 	tsk->fs = copy_fs_struct(fs);
 	if (!tsk->fs)
 		return -ENOMEM;
@@ -1847,10 +1852,15 @@ static __latent_entropy struct task_struct *copy_process(
 	if (!(clone_flags & CLONE_THREAD))
 		hlist_add_head(&delayed.node, &current->signal->multiprocess);
 	recalc_sigpending();
+	clear_thread_flag(TIF_SIGPENDING);
+
 	spin_unlock_irq(&current->sighand->siglock);
 	retval = -ERESTARTNOINTR;
+#ifdef CONFIG_MMU
+// rkj: XXX: this is still misterious, why WHY are we getting signals pending?
 	if (signal_pending(current))
 		goto fork_out;
+#endif
 
 	retval = -ENOMEM;
 	p = dup_task_struct(current, node);
@@ -2160,7 +2170,9 @@ static __latent_entropy struct task_struct *copy_process(
 	 * Copy seccomp details explicitly here, in case they were changed
 	 * before holding sighand lock.
 	 */
+#ifdef CONFIG_MMU
 	copy_seccomp(p);
+#endif
 
 	rseq_fork(p, clone_flags);
 
@@ -2333,6 +2345,7 @@ struct mm_struct *copy_init_mm(void)
 	return dup_mm(NULL, &init_mm);
 }
 
+
 /*
  *  Ok, this is the main fork-routine.
  *
@@ -2369,8 +2382,9 @@ long _do_fork(struct kernel_clone_args *args)
 	p = copy_process(NULL, trace, NUMA_NO_NODE, args);
 	add_latent_entropy();
 
-	if (IS_ERR(p))
+	if (IS_ERR(p)) {
 		return PTR_ERR(p);
+	}
 
 	/*
 	 * Do this prior waking up the new thread - the thread pointer
@@ -2384,13 +2398,36 @@ long _do_fork(struct kernel_clone_args *args)
 	if (clone_flags & CLONE_PARENT_SETTID)
 		put_user(nr, args->parent_tid);
 
+	unsigned char *stack_copy;
+	struct uml_pt_regs *regs = &current->thread.regs.regs;
+
+	long sp1, sp2, sp3, sp4;
+	long task_test;
+
 	if (clone_flags & CLONE_VFORK) {
 		p->vfork_done = &vfork;
 		init_completion(&vfork);
 		get_task_struct(p);
+	/*
+	 * rkj: store the stack, so the child does whatever it wants with it.
+	 */
+#ifndef CONFIG_MMU
+		stack_copy = kzalloc(PAGE_SIZE << THREAD_SIZE_ORDER,
+					GFP_KERNEL);
+		if (!stack_copy)
+			return -ENOMEM;
+		memcpy(stack_copy, regs->gp[HOST_SP],
+					PAGE_SIZE << THREAD_SIZE_ORDER);
+
+		int i = 64;
+		while (i >= 0) {
+			i -= 8;
+		}
+#endif
 	}
 
 	wake_up_new_task(p);
+		
 
 	/* forking complete and child started to run, tell ptracer */
 	if (unlikely(trace))
@@ -2399,6 +2436,23 @@ long _do_fork(struct kernel_clone_args *args)
 	if (clone_flags & CLONE_VFORK) {
 		if (!wait_for_vfork_done(p, &vfork))
 			ptrace_event_pid(PTRACE_EVENT_VFORK_DONE, pid);
+
+#ifndef CONFIG_MMU
+
+		// XXX: rkj
+		// we have a pending SIGCHLD. how do we handle it?
+		// trying to handle it with an interrupt_end call
+		// HOW TO HANDLE SIGNALS IN UML?
+		clear_tsk_thread_flag(current, TIF_SIGPENDING);
+
+		memcpy(regs->gp[HOST_SP], stack_copy,
+			PAGE_SIZE << THREAD_SIZE_ORDER);
+
+		int i = 64;
+		while (i >= 0) {
+			i -= 8;
+		}
+#endif
 	}
 
 	put_pid(pid);

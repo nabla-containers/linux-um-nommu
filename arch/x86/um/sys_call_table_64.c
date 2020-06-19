@@ -30,7 +30,13 @@
 #define sys_mmap old_mmap
 
 #define stub_clone sys_clone
+
+#ifdef CONFIG_MMU
 #define stub_fork sys_fork
+#else
+#define stub_fork sys_ni_syscall
+#endif
+
 #define stub_vfork sys_vfork
 #define stub_execve sys_execve
 #define stub_execveat sys_execveat

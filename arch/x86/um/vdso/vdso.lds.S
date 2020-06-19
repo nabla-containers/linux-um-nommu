@@ -12,12 +12,16 @@
 #define VDSO_PRELINK 0xffffffffff700000
 #include "vdso-layout.lds.S"
 
+ENTRY(__kernel_vsyscall);
+
 /*
  * This controls what userland symbols we export from the vDSO.
  */
 VERSION {
 	LINUX_2.6 {
 	global:
+		write;
+		__vdso_write;
 		clock_gettime;
 		__vdso_clock_gettime;
 		gettimeofday;
@@ -26,6 +30,14 @@ VERSION {
 		__vdso_getcpu;
 		time;
 		__vdso_time;
+	local: *;
+	};
+
+	LINUX_2.5 {
+	global:
+		__kernel_vsyscall;
+		__kernel_sigreturn;
+		__kernel_rt_sigreturn;
 	local: *;
 	};
 }

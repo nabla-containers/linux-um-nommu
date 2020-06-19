@@ -193,6 +193,7 @@ void __wake_up_sync_key(struct wait_queue_head *wq_head, unsigned int mode,
 	if (unlikely(nr_exclusive != 1))
 		wake_flags = 0;
 
+	// RKJ: signals printk(KERN_DEBUG "%s current=%lx wake up parent\n", __FUNCTION__, current);
 	__wake_up_common_lock(wq_head, mode, nr_exclusive, wake_flags, key);
 }
 EXPORT_SYMBOL_GPL(__wake_up_sync_key);

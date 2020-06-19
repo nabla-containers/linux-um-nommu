@@ -16,6 +16,7 @@
 #include <sys/un.h>
 #include <sys/types.h>
 #include <os.h>
+#include <linux/falloc.h>
 
 static void copy_stat(struct uml_stat *dst, const struct stat64 *src)
 {

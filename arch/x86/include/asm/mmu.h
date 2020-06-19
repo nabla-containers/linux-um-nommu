@@ -2,6 +2,8 @@
 #ifndef _ASM_X86_MMU_H
 #define _ASM_X86_MMU_H
 
+#ifdef CONFIG_MMU
+
 #include <linux/spinlock.h>
 #include <linux/rwsem.h>
 #include <linux/mutex.h>
@@ -55,6 +57,27 @@ typedef struct {
 	void __user *bd_addr;
 #endif
 } mm_context_t;
+
+#else
+
+/*
+ * From nommu.h:
+ *  Copyright (C) 2002, David McCullough <davidm@snapgear.com>
+ *  modified for 2.6 by Hyok S. Choi <hyok.choi@samsung.com>
+ */
+typedef struct {
+        unsigned long   end_brk;
+
+// rkj: what about this ELF thing?
+#ifdef CONFIG_BINFMT_ELF_FDPIC
+        unsigned long   exec_fdpic_loadmap;
+        unsigned long   interp_fdpic_loadmap;
+#endif
+
+} mm_context_t;
+
+
+#endif
 
 #define INIT_MM_CONTEXT(mm)						\
 	.context = {							\

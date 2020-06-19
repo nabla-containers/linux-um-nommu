@@ -173,6 +173,9 @@ static void handle_trap(int pid, struct uml_pt_regs *regs,
 }
 
 extern char __syscall_stub_start[];
+int userspace_pid[NR_CPUS];
+
+#ifdef CONFIG_MMU
 
 /**
  * userspace_tramp() - userspace trampoline
@@ -247,8 +250,6 @@ static int userspace_tramp(void *stack)
 	kill(os_getpid(), SIGSTOP);
 	return 0;
 }
-
-int userspace_pid[NR_CPUS];
 
 /**
  * start_userspace() - prepare a new userspace process
@@ -443,6 +444,7 @@ void userspace(struct uml_pt_regs *regs, unsigned long *aux_fp_regs)
 		}
 	}
 }
+#endif
 
 static unsigned long thread_regs[MAX_REG_NR];
 static unsigned long thread_fp_regs[FP_SIZE];
@@ -462,8 +464,12 @@ static int __init init_thread_regs(void)
 	return 0;
 }
 
+#ifdef CONFIG_MMU
+// rkj: XXX sub_clone_handler above makes a clone syscall
 __initcall(init_thread_regs);
+#endif
 
+#ifdef CONFIG_MMU
 int copy_context_skas0(unsigned long new_stack, int pid)
 {
 	int err;
@@ -547,9 +553,11 @@ int copy_context_skas0(unsigned long new_stack, int pid)
 	os_kill_ptraced_process(pid, 1);
 	return err;
 }
+#endif
 
 void new_thread(void *stack, jmp_buf *buf, void (*handler)(void))
 {
+	// rkj: this is where we are going to jump when scheduling this thread
 	(*buf)[0].JB_IP = (unsigned long) handler;
 	(*buf)[0].JB_SP = (unsigned long) stack + UM_THREAD_SIZE -
 		sizeof(void *);

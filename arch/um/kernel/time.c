@@ -113,10 +113,16 @@ static struct clock_event_device timer_clockevent = {
 
 static irqreturn_t um_timer(int irq, void *dev)
 {
+
+// rkj: XXX we still need user space timers
 	if (get_current()->mm != NULL)
 	{
         /* userspace - relay signal, results in correct userspace timers */
+		
+		//printk("%s\n", __FUNCTION__);
+#ifdef CONFIG_MMU
 		os_alarm_process(get_current()->mm->context.id.u.pid);
+#endif
 	}
 
 	(*timer_clockevent.event_handler)(&timer_clockevent);
@@ -189,6 +195,16 @@ void __init time_init(void)
 	timer_set_signal_handler();
 	late_time_init = um_timer_setup;
 }
+
+
+#ifndef CONFIG_MMU
+// just helps to boot faster as it speeds up
+// calibrate_delay in init/main.c:start_kernel
+unsigned long calibrate_delay_is_known(void)
+{
+	return 1;
+}
+#endif
 
 #ifdef CONFIG_UML_TIME_TRAVEL_SUPPORT
 unsigned long calibrate_delay_is_known(void)

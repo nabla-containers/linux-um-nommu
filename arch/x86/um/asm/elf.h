@@ -8,6 +8,8 @@
 #include <asm/user.h>
 #include <skas.h>
 
+#define ELF_FDPIC_CORE_EFLAGS  0
+
 #ifdef CONFIG_X86_32
 
 #define R_386_NONE	0
@@ -178,8 +180,11 @@ do {								\
 #define ELF_PLATFORM "x86_64"
 
 /* No user-accessible fixmap addresses, i.e. vsyscall */
-#define FIXADDR_USER_START      0
-#define FIXADDR_USER_END        0
+//#define FIXADDR_USER_START      0
+//#define FIXADDR_USER_END        0
+
+#define FIXADDR_USER_START      vsyscall_ehdr
+#define FIXADDR_USER_END        vsyscall_end
 
 #define ARCH_HAS_SETUP_ADDITIONAL_PAGES 1
 struct linux_binprm;
@@ -187,6 +192,7 @@ extern int arch_setup_additional_pages(struct linux_binprm *bprm,
 	int uses_interp);
 
 extern unsigned long um_vdso_addr;
+#define AT_SYSINFO	32
 #define AT_SYSINFO_EHDR 33
 #define ARCH_DLINFO	NEW_AUX_ENT(AT_SYSINFO_EHDR, um_vdso_addr)
 

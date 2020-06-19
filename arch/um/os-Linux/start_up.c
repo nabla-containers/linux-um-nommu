@@ -94,6 +94,12 @@ static int start_ptraced_child(void)
 {
 	int pid, n, status;
 
+#ifndef CONFIG_MMU
+	printk(KERN_ERR "Should not be here\n.");
+	kill(os_getpid(), SIGSTOP);
+	while(1);
+#endif
+
 	fflush(stdout);
 
 	pid = fork();
@@ -328,6 +334,7 @@ void __init os_early_checks(void)
 	/* Print out the core dump limits early */
 	check_coredump_limit();
 
+#ifdef CONFIG_MMU
 	check_ptrace();
 
 	/* Need to check this early because mmapping happens before the
@@ -339,6 +346,7 @@ void __init os_early_checks(void)
 	if (init_registers(pid))
 		fatal("Failed to initialize default registers");
 	stop_ptraced_child(pid, 1, 1);
+#endif
 }
 
 int __init parse_iomem(char *str, int *add)

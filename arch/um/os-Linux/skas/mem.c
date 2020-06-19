@@ -34,6 +34,7 @@ static inline unsigned long *check_init_stack(struct mm_id * mm_idp,
 
 static unsigned long syscall_regs[MAX_REG_NR];
 
+#ifdef CONFIG_MMU
 static int __init init_syscall_regs(void)
 {
 	get_safe_registers(syscall_regs, NULL);
@@ -205,3 +206,4 @@ int protect(struct mm_id * mm_idp, unsigned long addr, unsigned long len,
 
 	return ret;
 }
+#endif

@@ -14,6 +14,7 @@
 #include <kern_util.h>
 #include <os.h>
 
+#ifdef CONFIG_MMU
 pte_t *virt_to_pte(struct mm_struct *mm, unsigned long addr)
 {
 	pgd_t *pgd;
@@ -129,6 +130,15 @@ static long buffer_op(unsigned long addr, int len, int is_write,
  out:
 	return remain;
 }
+#else
+// rkj: not sure what buffer_op does, but there is no need
+// to do more than the memcpy in place slike raw_copy_to/from_user
+static long buffer_op(unsigned long addr, int len, int is_write,
+		      int (*op)(unsigned long, int, void *), void *arg)
+{
+	return 0;
+}
+#endif
 
 static int copy_chunk_from_user(unsigned long from, int len, void *arg)
 {

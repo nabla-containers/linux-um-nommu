@@ -37,6 +37,7 @@ int __init start_uml(void)
 {
 	stack_protections((unsigned long) &cpu0_irqstack);
 	set_sigstack(cpu0_irqstack, THREAD_SIZE);
+	// rkj: cpu0_irqstack seems to be NULL during handling of signals
 
 	init_new_thread_signals();
 

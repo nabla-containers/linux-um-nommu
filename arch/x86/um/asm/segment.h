@@ -12,8 +12,10 @@ typedef struct {
 	unsigned long seg;
 } mm_segment_t;
 
+#ifdef CONFIG_MMU
 #define MAKE_MM_SEG(s)	((mm_segment_t) { (s) })
 #define KERNEL_DS	MAKE_MM_SEG(~0UL)
 #define USER_DS		MAKE_MM_SEG(TASK_SIZE)
+#endif
 
 #endif

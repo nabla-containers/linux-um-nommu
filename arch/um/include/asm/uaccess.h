@@ -40,10 +40,14 @@ static inline int __access_ok(unsigned long addr, unsigned long size);
 
 static inline int __access_ok(unsigned long addr, unsigned long size)
 {
+#ifdef CONFIG_MMU
 	return __addr_range_nowrap(addr, size) &&
 		(__under_task_size(addr, size) ||
 		__access_ok_vsyscall(addr, size) ||
 		uaccess_kernel());
+#else
+	return 1;
+#endif
 }
 
 #endif

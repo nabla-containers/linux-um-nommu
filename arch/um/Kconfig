@@ -18,10 +18,13 @@ config UML
 	select GENERIC_CLOCKEVENTS
 	select HAVE_GCC_PLUGINS
 	select TTY # Needed for line.c
+	#select ARCH_HAS_BINFMT_FLAT
+	#select BINFMT_FLAT_ARGVP_ENVP_ON_STACK
+	#select MODULES_USE_ELF_REL
 
 config MMU
 	bool
-	default y
+	default n
 
 config NO_IOMEM
 	def_bool y
@@ -45,6 +48,10 @@ config STACKTRACE_SUPPORT
 	default y
 	select STACKTRACE
 
+config FREEZER
+	bool
+	default n
+
 config GENERIC_CALIBRATE_DELAY
 	bool
 	default y
@@ -62,7 +69,7 @@ source "arch/$(HEADER_ARCH)/um/Kconfig"
 
 config STATIC_LINK
 	bool "Force a static link"
-	default n
+	default y
 	help
 	  This option gives you the ability to force a static link of UML.
 	  Normally, UML is linked as a shared binary.  This is inconvenient for
@@ -142,7 +149,7 @@ config MAGIC_SYSRQ
 
 config KERNEL_STACK_ORDER
 	int "Kernel stack size order"
-	default 2 if 64BIT
+	default 3 if 64BIT
 	range 2 10 if 64BIT
 	default 1 if !64BIT
 	help
@@ -169,9 +176,10 @@ config PGTABLE_LEVELS
 	default 2
 
 config SECCOMP
-	def_bool y
+	def_bool n
 	prompt "Enable seccomp to safely compute untrusted bytecode"
 	---help---
+          rkj: XXX Currently not working
 	  This kernel feature is useful for number crunching applications
 	  that may need to compute untrusted bytecode during their
 	  execution. By using pipes or other transports made available to

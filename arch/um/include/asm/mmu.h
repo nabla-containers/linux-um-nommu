@@ -13,6 +13,16 @@ typedef struct mm_context {
 	struct mm_id id;
 	struct uml_arch_mm_context arch;
 	struct page *stub_pages[2];
+
+        unsigned long   end_brk;
+#ifdef CONFIG_BINFMT_ELF_FDPIC
+        unsigned long   exec_fdpic_loadmap;
+        unsigned long   interp_fdpic_loadmap;
+#endif
+
+	void __user *vdso;			/* vdso base address */
+	const struct vdso_image *vdso_image;	/* vdso image in use */
+
 } mm_context_t;
 
 extern void __switch_mm(struct mm_id * mm_idp);

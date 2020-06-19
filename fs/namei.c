@@ -466,6 +466,8 @@ EXPORT_SYMBOL(inode_permission);
  */
 void path_get(const struct path *path)
 {
+	if (!path)
+		return;
 	mntget(path->mnt);
 	dget(path->dentry);
 }

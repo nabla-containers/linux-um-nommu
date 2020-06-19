@@ -103,6 +103,9 @@ void os_fix_helper_signals(void)
 	signal(SIGWINCH, SIG_IGN);
 	signal(SIGINT, SIG_DFL);
 	signal(SIGTERM, SIG_DFL);
+
+	//signal(SIGALRM, SIG_IGN);
+	//signal(SIGIO, SIG_IGN);
 }
 
 void os_dump_core(void)
