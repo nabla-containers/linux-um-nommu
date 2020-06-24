@@ -91,6 +91,7 @@ config LD_SCRIPT_DYN
 
 config HOSTFS
 	tristate "Host filesystem"
+	default n
 	help
 	  While the User-Mode Linux port uses its own root file system for
 	  booting and normal file access, this module lets the UML user
@@ -113,7 +114,7 @@ config HOSTFS
 config MCONSOLE
 	bool "Management console"
 	depends on PROC_FS
-	default y
+	default n
 	help
 	  The user mode linux management console is a low-level interface to
 	  the kernel, somewhat like the i386 SysRq interface.  Since there is
@@ -203,6 +204,10 @@ config UML_TIME_TRAVEL_SUPPORT
 	  line help for more details.
 
 	  It is safe to say Y, but you probably don't need this.
+
+config UMID_DIR
+	bool
+	default n
 
 endmenu
 

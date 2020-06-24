@@ -22,6 +22,8 @@
 /* Changed by set_umid, which is run early in boot */
 static char umid[UMID_LEN] = { 0 };
 
+#ifdef CONFIG_UMID_DIR
+
 /* Changed by set_uml_dir and make_uml_dir, which are run early in boot */
 static char *uml_dir = UML_DIR;
 
@@ -245,16 +247,6 @@ out:
 	free(file);
 }
 
-int __init set_umid(char *name)
-{
-	if (strlen(name) > UMID_LEN - 1)
-		return -E2BIG;
-
-	strlcpy(umid, name, sizeof(umid));
-
-	return 0;
-}
-
 /* Changed in make_umid, which is called during early boot */
 static int umid_setup = 0;
 
@@ -358,11 +350,6 @@ int __init umid_file_name(char *name, char *buf, int len)
 	return 0;
 }
 
-char *get_umid(void)
-{
-	return umid;
-}
-
 static int __init set_uml_dir(char *name, int *add)
 {
 	if (*name == '\0') {
@@ -413,3 +400,22 @@ static void remove_umid_dir(void)
 }
 
 __uml_exitcall(remove_umid_dir);
+
+#endif
+
+int __init set_umid(char *name)
+{
+	if (strlen(name) > UMID_LEN - 1)
+		return -E2BIG;
+
+	strlcpy(umid, name, sizeof(umid));
+
+	return 0;
+}
+
+
+
+char *get_umid(void)
+{
+	return umid;
+}
