@@ -146,8 +146,10 @@ void os_dump_core(void)
 	 * nothing reasonable to do if that fails.
 	 */
 
+#ifdef CONFIG_MMU
 	while ((pid = waitpid(-1, NULL, WNOHANG | __WALL)) > 0)
 		os_kill_ptraced_process(pid, 0);
+#endif
 
 	uml_abort();
 }

@@ -30,7 +30,9 @@ static void kill_off_processes(void)
 			continue;
 		pid = t->mm->context.id.u.pid;
 		task_unlock(t);
+#ifdef CONFIG_MMU
 		os_kill_ptraced_process(pid, 1);
+#endif
 	}
 	read_unlock(&tasklist_lock);
 }
