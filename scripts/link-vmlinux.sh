@@ -86,7 +86,7 @@ vmlinux_link()
 		${CC} ${CFLAGS_vmlinux} -o ${2}			\
 			-Wl,-T,${lds}				\
 			${objects}				\
-			-lutil -lrt -lpthread
+			-lutil -lrt -lpthread -lseccomp
 		rm -f linux
 	fi
 }

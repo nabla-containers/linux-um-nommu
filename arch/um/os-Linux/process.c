@@ -17,6 +17,8 @@
 #include <init.h>
 #include <longjmp.h>
 #include <os.h>
+#include <err.h>
+#include <seccomp.h>
 
 #define ARBITRARY_ADDR -1
 #define FAILURE_PID    -1
@@ -109,6 +111,8 @@ void os_kill_process(int pid, int reap_child)
 		CATCH_EINTR(waitpid(pid, NULL, __WALL));
 }
 
+#ifdef CONFIG_MMU
+
 /* Kill off a ptraced child by all means available.  kill it normally first,
  * then PTRACE_KILL it, then PTRACE_CONT it in case it's in a run state from
  * which it can't exit directly.
@@ -122,6 +126,8 @@ void os_kill_ptraced_process(int pid, int reap_child)
 	if (reap_child)
 		CATCH_EINTR(waitpid(pid, NULL, __WALL));
 }
+
+#endif
 
 /* Don't use the glibc version, which caches the result in TLS. It misses some
  * syscalls, and also breaks with clone(), which does not unshare the TLS.
@@ -291,4 +297,78 @@ void init_new_thread_signals(void)
 	signal(SIGHUP, SIG_IGN);
 	set_handler(SIGIO);
 	signal(SIGWINCH, SIG_IGN);
+}
+
+static const int allowed_list[] = {
+	/*
+	 * These (above "at exit") are enough to run "anything".  Not allowing
+	 * the ones "at exit" will crash the process at exit only.
+	 */
+	SCMP_SYS(clock_gettime),
+	SCMP_SYS(write),
+	SCMP_SYS(read),
+	SCMP_SYS(rt_sigreturn),
+	SCMP_SYS(poll),
+	SCMP_SYS(timer_settime),
+	SCMP_SYS(epoll_wait),
+	SCMP_SYS(arch_prctl),
+	SCMP_SYS(clock_nanosleep),
+	/*
+	 * Used by tuntap at init:
+	 *
+	 * Need all of thse when using a tap device because the tuntap device
+	 * is opened when setting the interface in the guest (after the guest
+	 * kernel has booted!).
+	 */
+	SCMP_SYS(epoll_ctl),
+	SCMP_SYS(fcntl),
+	SCMP_SYS(rt_sigprocmask),
+	SCMP_SYS(ioctl),
+	SCMP_SYS(open),
+	SCMP_SYS(brk),
+	SCMP_SYS(getpid),
+
+	/* at exit */
+	SCMP_SYS(ioctl),
+	SCMP_SYS(epoll_ctl),
+	SCMP_SYS(wait4),
+	SCMP_SYS(kill),
+	SCMP_SYS(rt_sigaction),
+	SCMP_SYS(rt_sigprocmask),
+	SCMP_SYS(exit_group),
+	SCMP_SYS(close),
+#ifdef CONFIG_UMID_DIR
+	SCMP_SYS(munmap),
+	SCMP_SYS(getdents),
+	SCMP_SYS(open),
+	SCMP_SYS(rmdir),
+	SCMP_SYS(mmap),
+	SCMP_SYS(mprotect),
+	SCMP_SYS(fstat),
+	SCMP_SYS(unlink),
+#endif
+};
+
+#define ELEMENTS(x) (sizeof (x) / sizeof (*(x)))
+
+void os_setup_seccomp(void)
+{
+	int i, rc = -1;
+	scmp_filter_ctx ctx;
+
+	ctx = seccomp_init(SCMP_ACT_KILL);
+	if (ctx == NULL)
+		err(1, "seccomp_init");
+
+	for (i = 0; i < ELEMENTS(allowed_list); i++) {
+		rc = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, allowed_list[i], 0);
+		if (rc < 0)
+			err(1, "seccomp_rule_add");
+	}
+
+	rc = seccomp_load(ctx);
+	if (rc < 0)
+		err(1, "seccomp_load");
+
+	seccomp_release(ctx);
 }

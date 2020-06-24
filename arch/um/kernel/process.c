@@ -119,6 +119,20 @@ extern void __kernel_vsyscall(void);
 
 #endif
 
+static void setup_seccomp(void)
+{
+	static bool is_first = true;
+	int save_kmalloc_ok;
+
+	if (!is_first)
+		return;
+
+	save_kmalloc_ok = kmalloc_ok;
+	kmalloc_ok = 0;
+	os_setup_seccomp();
+	kmalloc_ok = save_kmalloc_ok;
+	is_first = false;
+}
 
 /*
  * This is called magically, by its address being stuffed in a jmp_buf
@@ -145,10 +159,14 @@ void new_thread_handler(void)
 #ifdef CONFIG_MMU
 	userspace(&current->thread.regs.regs, current_thread_info()->aux_fp_regs);
 #else
+
 	arch_switch_to(current);
 
 	/* Handle any immediate reschedules or signals */
 	interrupt_end();
+
+	/* Setup seccomp as late as possible (before running untrusted code). */
+	setup_seccomp();
 
 	userspace(&current->thread.regs.regs, current_thread_info()->aux_fp_regs);
 
